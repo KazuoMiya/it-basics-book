@@ -1,0 +1,33 @@
+<div class="app" id="app">
+  <header class="topbar">
+    <button class="menu-btn" id="menu-btn" type="button" aria-controls="sidebar" aria-expanded="false">
+      <span class="menu-icon" aria-hidden="true"></span><span class="menu-text">目次</span>
+    </button>
+    <a class="brand" href="#intro">{{TITLE}}</a>
+    <span class="crumb" id="crumb"></span>
+    <a class="repo-link" href="{{REPO}}" target="_blank" rel="noopener">GitHub</a>
+  </header>
+
+  <nav class="sidebar" id="sidebar" aria-label="目次">
+    <div class="search">
+      <label class="sr-only" for="q">本文を検索</label>
+      <input id="q" type="search" placeholder="本文を検索" autocomplete="off">
+    </div>
+    <a class="resume" id="resume" href="#" hidden></a>
+    <div class="results" id="results" hidden></div>
+    <ol class="toc" id="toc"></ol>
+    <p class="side-note">PythonとSQLのコード例は、その場で実行できます。</p>
+  </nav>
+  <div class="scrim" id="scrim" hidden></div>
+
+  <main class="main" id="main">
+    <article class="page" id="page"></article>
+    <nav class="pager" id="pager" aria-label="前後の章"></nav>
+  </main>
+</div>
+
+<!--TEMPLATES-->
+
+<script>/*DATA*/</script>
+<script>/*SQLRUN*/</script>
+<script>/*APP*/</script>
