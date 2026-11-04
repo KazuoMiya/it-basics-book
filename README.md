@@ -4,7 +4,7 @@
 
 Web版: https://kazuomiya.github.io/it-basics-book/
 
-Web版では、本文中のPythonとSQLのコード例をその場で実行・編集できます。Pythonはブラウザーの中で動くPython 3.12（Pyodide）、SQLはブラウザーの中で動くSQLite（sql.js）で実行します。サーバーにコードを送ることはありません。
+Web版では、本文中のPythonとSQLのコード例をその場で実行・編集できます。Pythonはブラウザーの中で動くPython 3.12（Pyodide）、SQLはブラウザーの中で動くSQLite（sql.js）で実行します。実行ボタンに入力したコードは端末上で処理します。Pythonの実行欄は通信を制限した専用環境で動きます。SQLは実行中に「中断」を押せます。
 
 ## 構成
 
@@ -42,6 +42,8 @@ book.json        書名、リポジトリ、読み込むライブラリの設定
 | ` ```python id=photos ` | このコードに名前を付ける |
 | ` ```python uses=photos ` | 名前を付けたコードを先に（表示せずに）実行してから、このコードを実行する |
 | ` ```sql tables=members,products ` | 用意するサンプルテーブルを指定する（省略時はすべて） |
+| ` ```python raises=IndexError ` | この例が意図的に起こす例外の種類を指定する |
+| ` ```sql unordered ` | 結果表を行順に依存せず比較する（重複行は区別する） |
 | ` ```python norun ` | 実行ボタンを付けない |
 
 ## 手元でビルドする
@@ -49,13 +51,29 @@ book.json        書名、リポジトリ、読み込むライブラリの設定
 Python 3.12 を使います。
 
 ```sh
-pip install markdown-it-py
+pip install -r requirements.txt
 python tools/check_examples.py   # コード例が本の結果どおりに動くか確かめる
 python tools/build.py            # _site/ にWeb版を作る
-python -m http.server -d _site   # http://localhost:8000/ で確認する
+python -m http.server --bind 127.0.0.1 -d _site   # http://localhost:8000/ で確認する
 ```
 
+ビルドはnpmから指定版の実行環境を取得し、固定したハッシュを照合してWeb版と一緒に配布します。オフラインで組み立てるには、`book.json` にある2つの配布アーカイブをフォルダに置き、`--runtime-cache フォルダ名` を指定します。既存の出力はビルドが生成した内容と一致するときだけ置換します。旧版の出力や独自ファイルがある場合は、新しい出力先を指定してください。
+
+`tools/check_examples.py` は原稿に書かれたPythonを手元の権限で実行します。他者の変更を検証するときは、事前に内容を確認するか、認証情報のない使い捨て環境を使ってください。
+
 `main` ブランチに push すると、GitHub Actions がコード例を確かめてからWeb版を組み立て、GitHub Pages に公開します。
+
+## 修正後の確認
+
+`python -m unittest discover -s tests` で振込の失敗・売上集計・ビルド先の保護などを検証できます。Web版を生成した後は、次の手順でChromeを使って掲載例と実行環境を確認できます。
+
+```sh
+npm install --no-save --package-lock=false --ignore-scripts playwright-core@1.62.1
+npx --no-install playwright-core install chromium
+node tests/web.cjs _site
+```
+
+インストール済みのChromeを使う場合は、`CHROME_PATH` に実行ファイルのパスを指定すれば、2行目は省略できます。
 
 ## 図を作り直すとき
 
@@ -67,4 +85,4 @@ node tools/render_figs.js
 
 ## ライセンス
 
-未定です。現時点では、原稿・図・コードの著作権はすべて著者に帰属します。
+未定です。現時点では、本書の原稿・図・著者が書いたコードの著作権は著者に帰属します。Web版に同梱するPyodideとsql.jsには各配布物のライセンスが適用されます。ライセンス文は生成先の `runtime/` に含まれます。

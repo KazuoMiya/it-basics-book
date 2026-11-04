@@ -1,54 +1,45 @@
-// Runs Python (Pyodide) off the main thread so a long loop never freezes the page.
 const RUNNER = /*RUNNER*/;
-const PYODIDE = /*PYODIDE*/;  // where Pyodide is loaded from
-const BUNDLED = /*BUNDLED*/;  // true when Pyodide files are shipped next to the page
-let ready = null;
+let py;
 
-function boot() {
-  if (!ready) {
-    ready = (async () => {
-      const base = new URL(PYODIDE, self.location.href).href;
-      if (BUNDLED) {
-        // The standard library ships as a script (base64) because that host does not
-        // serve .zip files; hand its bytes to Pyodide when it asks for the archive.
-        importScripts(base + 'python_stdlib.js');
-        const raw = atob(self.PYODIDE_STDLIB_B64);
-        const bytes = new Uint8Array(raw.length);
-        for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-        self.PYODIDE_STDLIB_B64 = null;
-        const realFetch = self.fetch.bind(self);
-        self.fetch = (input, init) => {
-          const url = input instanceof Request ? input.url : String(input);
-          if (url.endsWith('python_stdlib.zip')) {
-            return Promise.resolve(new Response(bytes, { headers: { 'Content-Type': 'application/zip' } }));
-          }
-          return realFetch(input, init);
-        };
-      }
-      importScripts(base + 'pyodide.js');
-      const py = await loadPyodide({ indexURL: base });
-      py.runPython(RUNNER);
-      return py;
-    })();
+async function boot(files) {
+  const base = 'https://runtime.invalid/';
+  if (typeof STDLIB_B64 !== 'undefined') {
+    files['python_stdlib.zip'] = Uint8Array.from(atob(STDLIB_B64), c => c.charCodeAt(0));
   }
-  return ready;
+  // Pyodide loads these three files through fetch. The sandbox CSP remains
+  // active for all other requests, including requests made by edited Python.
+  const realFetch = self.fetch;
+  self.fetch = (input, init) => {
+    const url = new URL(input.url || input, base);
+    const name = url.pathname.slice(1);
+    if (url.origin + '/' === base && Object.hasOwn(files, name)) {
+      return Promise.resolve(new Response(files[name], {headers: {
+        'Content-Type': name.endsWith('.wasm') ? 'application/wasm' : 'application/octet-stream'
+      }}));
+    }
+    return realFetch.call(self, input, init);
+  };
+  try {
+    py = await loadPyodide({indexURL: base});
+    py.runPython(RUNNER);
+  } finally {
+    self.fetch = realFetch;
+  }
 }
 
-self.onmessage = async (e) => {
-  const msg = e.data || {};
-  if (msg.type === 'boot') {
-    try { await boot(); self.postMessage({ type: 'booted' }); }
-    catch (err) { self.postMessage({ type: 'boot-failed', message: String((err && err.message) || err) }); }
-    return;
-  }
-  const { id, code, mode, setup } = msg;
+self.onmessage = async ({data}) => {
   try {
-    const py = await boot();
+    if (data.type === 'boot') {
+      await boot(data.files);
+      self.postMessage({type: 'booted'});
+      return;
+    }
     const run = py.globals.get('run');
-    const res = run(code, mode || 'script', setup || '');
-    run.destroy();
-    self.postMessage({ id, ok: true, res: JSON.parse(res) });
-  } catch (err) {
-    self.postMessage({ id, ok: false, message: String((err && err.message) || err) });
+    try {
+      const res = JSON.parse(run(data.code, data.mode, data.setup));
+      self.postMessage({id: data.id, ok: true, res});
+    } finally { run.destroy(); }
+  } catch (error) {
+    self.postMessage({type: data.type === 'boot' ? 'failed' : 'error', id: data.id, message: String(error)});
   }
 };

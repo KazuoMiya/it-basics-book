@@ -3,6 +3,14 @@
   "description": "コンピューター、データ、プログラム、データベース、ネットワーク、セキュリティのしくみを、なぜそうなるのかから学ぶIT入門書。本文中のPythonとSQLのコード例は、その場で実行できます。",
   "repo": "KazuoMiya/it-basics-book",
   "branch": "main",
-  "pyodide": "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/",
-  "sqljs": "https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-asm.js"
+  "runtime": {
+    "pyodide": {
+      "url": "https://registry.npmjs.org/pyodide/-/pyodide-0.26.4.tgz",
+      "sha512": "z2CHsjVlhhJi5tYBF0AYAfNEPo3zq/z+xOpFtk1tweJkRaTqU4UK/7pLvo8DBU2VDPH31vB3pSI+8fnoqrVrFg=="
+    },
+    "sql.js": {
+      "url": "https://registry.npmjs.org/sql.js/-/sql.js-1.10.3.tgz",
+      "sha512": "H46aWtQkdyjZwFQgraUruy5h/DyJBbAK3EA/WEMqiqF6PGPfKBSKBj/er3dVyYqVIoYfRf5TFM/loEjtQIrqJg=="
+    }
+  }
 }
