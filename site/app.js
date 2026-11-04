@@ -10,7 +10,7 @@
 
   // ---------------------------------------------------------------- TOC
   const pages = BOOK.toc;
-  const secToPage = {};
+  const secToPage = Object.create(null);
   pages.forEach(p => p.secs.forEach(s => { secToPage[s.id] = p.id; }));
   const pageTitle = p => p.title ? `${p.label}　${p.title}` : p.label;
 
@@ -65,9 +65,14 @@
   }
 
   function route() {
-    const id = decodeURIComponent(location.hash.slice(1)) || 'intro';
+    let id;
+    try { id = decodeURIComponent(location.hash.slice(1)) || 'intro'; }
+    catch { id = 'intro'; }
     const pid = pages.some(p => p.id === id) ? id : (secToPage[id] || (id.match(/^(intro|ch\d|outro)-/) || [])[1]);
-    if (!pid) { showPage('intro'); window.scrollTo(0, 0); return; }
+    if (!pages.some(p => p.id === pid)) { showPage('intro'); window.scrollTo(0, 0); return; }
+    if (id !== pid && !document.getElementById('tpl-' + pid).content.getElementById(id)) {
+      showPage('intro'); window.scrollTo(0, 0); return;
+    }
     const changed = current !== pid;
     showPage(pid);
     if (id === pid) {
@@ -206,71 +211,96 @@
   }
 
   // ------------------------------------------------------------- Python
-  const Py = {
-    worker: null, booted: null, seq: 0, pending: new Map(),
-    start() {
-      if (this.worker) return;
-      this.worker = new Worker('py-worker.js');
-      this.worker.onmessage = e => {
-        const d = e.data;
-        if (d.type === 'booted') return this.bootRes && this.bootRes();
-        if (d.type === 'boot-failed') return this.bootRej && this.bootRej(new Error(d.message));
-        const p = this.pending.get(d.id);
-        if (!p) return;
-        this.pending.delete(d.id);
-        clearTimeout(p.timer);
-        d.ok ? p.res(d.res) : p.rej(new Error(d.message));
-      };
-      this.worker.onerror = e => {
-        e.preventDefault();
-        const err = new Error('Pythonの実行環境を読み込めませんでした。');
-        if (this.bootRej) this.bootRej(err);
-        this.pending.forEach(p => p.rej(err));
-        this.reset();
-      };
-    },
-    boot() {
-      if (!this.booted) {
-        this.start();
-        this.booted = new Promise((res, rej) => { this.bootRes = res; this.bootRej = rej; });
-        this.worker.postMessage({ type: 'boot' });
-        this.booted.catch(() => this.reset());
-      }
-      return this.booted;
-    },
-    reset() {
-      if (this.worker) this.worker.terminate();
-      this.worker = null; this.booted = null; this.bootRes = this.bootRej = null;
-    },
-    async run(code, mode, setup) {
-      await this.boot();
-      const id = ++this.seq;
-      return new Promise((res, rej) => {
-        const timer = setTimeout(() => {
-          this.pending.delete(id);
-          this.reset();
-          rej(new Error('10秒たっても終わらなかったため、実行を止めました。終わらない繰り返しになっていないか確かめてください。'));
-        }, 10000);
-        this.pending.set(id, { res, rej, timer });
-        this.worker.postMessage({ id, code, mode, setup });
-      });
-    },
-  };
+  let pySession = null;
+  let pyAssets = null;
+  async function loadPyAssets(signal) {
+    const names = ['py-worker.js', 'runtime/pyodide.asm.wasm', 'runtime/pyodide-lock.json'];
+    if (!BOOK.embeddedStdlib) names.push('runtime/python_stdlib.zip');
+    const buffers = await Promise.all(names.map(async name => {
+      const res = await fetch(name, {signal});
+      if (!res.ok) throw new Error(name + ' を取得できませんでした。');
+      return res.arrayBuffer();
+    }));
+    const files = {};
+    names.slice(1).forEach((name, i) => { files[name.split('/').pop()] = buffers[i + 1]; });
+    return {source: new Blob([buffers[0]], {type: 'text/javascript'}), files};
+  }
+
+  function endPySession(s, error) {
+    if (pySession !== s) return;
+    pySession = null;
+    clearTimeout(s.bootTimer);
+    s.rejectBoot(error);
+    for (const p of s.pending.values()) {
+      clearTimeout(p.timer);
+      p.reject(error);
+    }
+    s.pending.clear();
+    s.loading.abort();
+    s.port.close();
+    s.frame.remove();
+  }
+
+  function startPython() {
+    if (pySession) return pySession;
+    const frame = document.createElement('iframe');
+    frame.hidden = true;
+    frame.setAttribute('sandbox', 'allow-scripts');
+    const channel = new MessageChannel();
+    const s = {frame, port: channel.port1, seq: 0, pending: new Map(), loading: new AbortController()};
+    pySession = s;
+    s.ready = new Promise((resolve, reject) => { s.resolveBoot = resolve; s.rejectBoot = reject; });
+    s.bootTimer = setTimeout(() => endPySession(s, new Error('Pythonの準備が時間内に完了しませんでした。')), 45000);
+    s.port.onmessage = ({data}) => {
+      if (data.type === 'failed') return endPySession(s, new Error(data.message));
+      if (data.type === 'booted') { clearTimeout(s.bootTimer); s.resolveBoot(); return; }
+      const p = s.pending.get(data.id);
+      if (!p) return;
+      clearTimeout(p.timer);
+      s.pending.delete(data.id);
+      if (data.ok) p.resolve(data.res); else p.reject(new Error(data.message));
+    };
+    frame.onload = async () => {
+      try {
+        const assets = pyAssets || await loadPyAssets(s.loading.signal);
+        if (pySession !== s) return;
+        pyAssets = assets;
+        frame.contentWindow.postMessage(assets, '*', [channel.port2]);
+      } catch (error) { endPySession(s, error); }
+    };
+    frame.srcdoc = BOOK.workerHost;
+    document.body.appendChild(frame);
+    return s;
+  }
+
+  async function runPython(code, mode, setup) {
+    const s = startPython();
+    await s.ready;
+    const id = ++s.seq;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => endPySession(s, new Error('10秒たっても終わらなかったため、同じ実行環境の処理を停止しました。')), 10000);
+      s.pending.set(id, {resolve, reject, timer});
+      s.port.postMessage({id, code, mode, setup});
+    });
+  }
 
   // ---------------------------------------------------------------- SQL
-  let sqlLib = null;
-  function loadSQL() {
-    if (!sqlLib) {
-      sqlLib = new Promise((res, rej) => {
-        const s = document.createElement('script');
-        s.src = BOOK.sqljs;
-        s.onload = () => window.initSqlJs().then(res, rej);
-        s.onerror = () => rej(new Error('SQLの実行環境を読み込めませんでした。'));
-        document.head.appendChild(s);
-      });
-      sqlLib.catch(() => { sqlLib = null; });
-    }
-    return sqlLib;
+  function runSQL(code, setup, signal) {
+    return new Promise((resolve, reject) => {
+      const worker = new Worker('sql-worker.js');
+      const stop = () => finish(new Error('実行を中断しました。'));
+      const timer = setTimeout(() => finish(new Error('SQLの実行が10秒を超えたため停止しました。')), 10000);
+      function finish(error, items) {
+        clearTimeout(timer);
+        signal.removeEventListener('abort', stop);
+        worker.terminate();
+        if (error) reject(error); else resolve(items);
+      }
+      signal.addEventListener('abort', stop, {once: true});
+      worker.onmessage = ({data}) => finish(data.error && new Error(data.error), data.items);
+      worker.onerror = () => finish(new Error('SQLの実行環境を読み込めませんでした。'));
+      worker.postMessage({code, setup});
+    });
   }
 
   // ----------------------------------------------------- result rendering
@@ -293,6 +323,8 @@
   function sqlResultHTML(items) {
     const lines = [], tables = [];
     for (const it of items) {
+      if (it.truncated) lines.push('<div class="msg">表示上限を超えたため、結果の一部を省略しました。</div>');
+      if (it.type === 'limit') lines.push(`<div class="msg">${esc(it.message)}</div>`);
       if (it.type === 'rows') tables.push(tableHTML(it.columns, it.rows, items.filter(x => x.type === 'rows').length > 1 ? `結果 ${tables.length + 1}` : ''));
       else if (it.type === 'change') lines.push(`<div class="ok">${esc(it.table)}テーブル：${it.n}行を${it.verb}しました</div>`);
       else if (it.type === 'create') lines.push(`<div class="ok">${esc(it.table)}テーブルを作成しました</div>`);
@@ -322,6 +354,8 @@
     if (b.setup) note = 'この節で前に出てきたコードの続きとして実行します。';
     if (lang === 'sql') note = 'サンプルの' + b.tables.map(t => SAMPLE_NOTE[t] + 'テーブル').join('・') + 'に対して実行します。何度実行しても、データは元の状態から始まります。';
     const id = 'ed-' + i;
+    const sqlSetup = lang === 'sql' ? b.tables.map(t => BOOK.sample[t]).join('\n\n') : '';
+    let sqlController = null;
     el.innerHTML =
       `<div class="code-head"><span class="lang">${lang === 'sql' ? 'SQL' : 'Python'}</span><span class="note">${esc(note)}</span>` +
       `<div class="actions"><button type="button" class="btn-reset" hidden>元に戻す</button>` +
@@ -330,7 +364,7 @@
       `<pre class="src"><code></code></pre>` +
       `<textarea class="editor" id="${id}" spellcheck="false" autocapitalize="off" autocomplete="off" hidden aria-label="コードを編集"></textarea>` +
       `<div class="result" hidden><div class="result-head"><span class="label">実行結果</span><span class="status"></span></div><div class="out"></div></div>` +
-      (lang === 'sql' ? `<details class="sample"><summary>サンプルデータを作るSQLを見る</summary><pre><code>${hlCode(window.BookSQL.setupSql(b.tables), 'sql')}</code></pre></details>` : '');
+      (lang === 'sql' ? `<details class="sample"><summary>サンプルデータを作るSQLを見る</summary><pre><code>${hlCode(sqlSetup, 'sql')}</code></pre></details>` : '');
     const src = $('.src code', el), ed = $('.editor', el), result = $('.result', el), out = $('.out', el),
       status = $('.status', el), btnRun = $('.btn-run', el), btnEdit = $('.btn-edit', el), btnReset = $('.btn-reset', el);
     const paint = () => { src.innerHTML = hl(code, lang, b.mode); };
@@ -372,6 +406,7 @@
       paint(); btnReset.hidden = true; showExpected();
     });
     btnRun.addEventListener('click', async () => {
+      if (sqlController) { sqlController.abort(); return; }
       if (btnRun.getAttribute('aria-busy') === 'true') return;
       sync();
       btnRun.setAttribute('aria-busy', 'true');
@@ -380,16 +415,17 @@
       const t0 = performance.now();
       try {
         if (lang === 'python') {
-          if (!Py.worker || !Py.booted) {
+          if (!pySession) {
             status.textContent = 'Pythonを準備しています（初回だけ、数秒から十数秒かかります）';
             out.innerHTML = '';
           } else status.textContent = '実行しています…';
-          const res = await Py.run(code, b.mode, b.setup || '');
+          const res = await runPython(code, b.mode, b.setup || '');
           out.innerHTML = pyResultHTML(res);
         } else {
-          status.textContent = sqlLib ? '実行しています…' : 'SQLを準備しています…';
-          const SQL = await loadSQL();
-          out.innerHTML = sqlResultHTML(window.BookSQL.run(SQL, b.tables, code));
+          sqlController = new AbortController();
+          btnRun.textContent = '中断';
+          status.textContent = 'SQLを実行しています…';
+          out.innerHTML = sqlResultHTML(await runSQL(code, sqlSetup, sqlController.signal));
         }
         const ms = performance.now() - t0;
         status.textContent = 'ブラウザーで実行した結果' + (ms < 2000 ? '' : `（${(ms / 1000).toFixed(1)}秒）`);
@@ -398,11 +434,13 @@
         status.textContent = '実行できませんでした';
         out.innerHTML = `<pre><span class="err">${esc(err.message || err)}</span></pre>` + (b.expected ? `<div class="result-head"><span class="label">本書に掲載の結果</span></div>${expectedHTML(b)}` : '');
       } finally {
+        sqlController = null;
+        btnRun.textContent = '実行';
         btnRun.removeAttribute('aria-busy');
       }
     });
     // Start loading Python as soon as the reader shows interest in running code.
-    if (lang === 'python') btnRun.addEventListener('pointerenter', () => { Py.boot().catch(() => {}); }, { once: true });
+    if (lang === 'python') btnRun.addEventListener('pointerenter', () => { startPython().ready.catch(() => {}); }, { once: true });
   }
 
   // ------------------------------------------------------------- start

@@ -6,7 +6,6 @@
                                           # self-contained copy (Pyodide files bundled)
 """
 import argparse
-import base64
 import html
 import json
 import re
@@ -19,11 +18,17 @@ from markdown_it import MarkdownIt
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from book import CONFIG, ROOT, load, sample_sql, SQL_TABLES  # noqa: E402
 
+from runtime import write_runtimes
+from output import build_output
+
 ap = argparse.ArgumentParser()
 ap.add_argument('--out', default='_site')
 ap.add_argument('--target', choices=['pages', 'artifact'], default='pages')
 ap.add_argument('--pyodide-dir', help='folder with pyodide.js, pyodide.asm.js/.wasm, python_stdlib.zip, pyodide-lock.json')
+ap.add_argument('--runtime-cache', help='directory containing the pinned npm .tgz archives for offline builds')
 args = ap.parse_args()
+if args.target == 'artifact' and not args.pyodide_dir:
+    ap.error('--target artifact needs --pyodide-dir')
 
 SITE = ROOT / 'site'
 OUT = (ROOT / args.out) if not Path(args.out).is_absolute() else Path(args.out)
@@ -72,6 +77,7 @@ for ch in chapters:
             entry['setup'] = r['setup']
         if r['lang'] == 'sql':
             entry['tables'] = r['tables']
+            entry['unordered'] = bool(r['attrs'].get('unordered'))
         run_data.append(entry)
     # figures -> placeholders
     figs = {}
@@ -142,7 +148,8 @@ for ch in chapters:
 
 # ---- assemble ---------------------------------------------------------------
 data = {'toc': toc, 'runs': run_data, 'title': CONFIG['title'], 'repo': f'https://github.com/{CONFIG["repo"]}',
-        'sqljs': CONFIG['sqljs'], 'sample': {t: sample_sql([t]) for t in SQL_TABLES}}
+        'workerHost': (SITE / 'python-host.html').read_text(encoding='utf-8'),
+        'embeddedStdlib': args.target == 'artifact', 'sample': {t: sample_sql([t]) for t in SQL_TABLES}}
 data_js = 'window.BOOK = ' + json.dumps(data, ensure_ascii=False).replace('</', '<\\/') + ';'
 head = (SITE / 'head.html').read_text(encoding='utf-8')
 body = (SITE / 'body.html').read_text(encoding='utf-8')
@@ -151,7 +158,6 @@ fill = lambda s: (s.replace('{{TITLE}}', esc(CONFIG['title'])).replace('{{DESCRI
 head = fill(head).replace('/*STYLE*/', (SITE / 'style.css').read_text(encoding='utf-8'))
 body = (fill(body).replace('<!--TEMPLATES-->', '\n'.join(templates))
         .replace('/*DATA*/', data_js)
-        .replace('/*SQLRUN*/', (SITE / 'sqlrun.js').read_text(encoding='utf-8'))
         .replace('/*APP*/', (SITE / 'app.js').read_text(encoding='utf-8')))
 if args.target == 'pages':
     page = f'<!doctype html>\n<html lang="ja">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n{head}\n</head>\n<body>\n{body}\n</body>\n</html>\n'
@@ -159,25 +165,13 @@ else:
     page = head + '\n' + body  # the artifact host adds the document skeleton
 page = page.replace('�', '&#xFFFD;')  # the book shows this character on purpose (mojibake example)
 
-if OUT.exists():
-    shutil.rmtree(OUT)
-OUT.mkdir(parents=True)
-(OUT / 'index.html').write_text(page, encoding='utf-8')
-runner = (ROOT / 'tools' / 'runner.py').read_text(encoding='utf-8')
-worker = (SITE / 'py-worker.js').read_text(encoding='utf-8').replace('/*RUNNER*/', json.dumps(runner, ensure_ascii=False))
-if args.target == 'pages':
-    worker = worker.replace('/*PYODIDE*/', json.dumps(CONFIG['pyodide'])).replace('/*BUNDLED*/', 'false')
-else:
-    if not args.pyodide_dir:
-        sys.exit('--target artifact needs --pyodide-dir')
-    src = Path(args.pyodide_dir)
-    (OUT / 'pyodide').mkdir()
-    for f in ['pyodide.js', 'pyodide.asm.js', 'pyodide.asm.wasm', 'pyodide-lock.json']:
-        shutil.copy(src / f, OUT / 'pyodide' / f)
-    b64 = base64.b64encode((src / 'python_stdlib.zip').read_bytes()).decode('ascii')
-    (OUT / 'pyodide' / 'python_stdlib.js').write_text(f'self.PYODIDE_STDLIB_B64 = "{b64}";\n', encoding='ascii')
-    worker = worker.replace('/*PYODIDE*/', '"pyodide/"').replace('/*BUNDLED*/', 'true')
-(OUT / 'py-worker.js').write_text(worker, encoding='utf-8')
-if args.target == 'pages':
-    (OUT / '.nojekyll').write_text('')
+with build_output(OUT) as stage:
+    for name in ['sql-worker.js', 'sqlrun.js']:
+        shutil.copyfile(SITE / name, stage / name)
+    (stage / 'index.html').write_text(page, encoding='utf-8')
+    runner = (ROOT / 'tools' / 'runner.py').read_text(encoding='utf-8')
+    worker = (SITE / 'py-worker.js').read_text(encoding='utf-8').replace('/*RUNNER*/', json.dumps(runner, ensure_ascii=False))
+    write_runtimes(stage, args.runtime_cache, args.pyodide_dir, args.target == 'artifact', worker)
+    if args.target == 'pages':
+        (stage / '.nojekyll').write_text('')
 print(f'{len(templates)} pages, {len(run_data)} runnable examples, {fig_n} figures -> {OUT}')

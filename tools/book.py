@@ -56,6 +56,15 @@ def fences(lines):
     return out
 
 
+def check_table_width(lines):
+    # Reject very wide book tables before the renderer pads their short rows.
+    code_lines = {i for f in fences(lines) for i in range(f['start'], f['end'] + 1)}
+    for n, line in enumerate(lines):
+        separator = line.strip().strip('|')
+        if n not in code_lines and separator.count('|') >= 64 and re.fullmatch(r'[ \t:|\-]+', separator):
+            raise ValueError(f'{n + 1}行目: 教材の表は64列以内にしてください')
+
+
 def _next(lines, i):
     j = i + 1
     while j < len(lines) and not lines[j].strip():
@@ -103,6 +112,7 @@ def load():
     named = {}
     for path in chapter_files():
         lines = path.read_text(encoding='utf-8').split('\n')
+        check_table_width(lines)
         runs = runnable(lines)
         for r in runs:
             if 'id' in r['attrs']:

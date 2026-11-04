@@ -8,11 +8,9 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
+  group: ${{ github.event_name == 'pull_request' && format('book-pr-{0}', github.event.pull_request.number) || 'book-pages' }}
   cancel-in-progress: true
 
 jobs:
@@ -20,15 +18,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: ビルドに使うライブラリを入れる
-        run: pip install markdown-it-py==3.0.0
+        run: pip install -r requirements.txt
       - name: コード例が本の実行結果どおりに動くか確かめる
         run: python tools/check_examples.py
+      - name: 異常系と再実行を検証する
+        run: python -m unittest discover -s tests
       - name: Web版を組み立てる
         run: python tools/build.py --out _site
+      - name: ブラウザーで掲載例と異常系を検証する
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+        run: |
+          npm install --no-save --package-lock=false --ignore-scripts playwright-core@1.62.1
+          node tests/web.cjs _site
       - uses: actions/upload-pages-artifact@v3
         if: github.event_name != 'pull_request'
         with:
@@ -36,6 +44,9 @@ jobs:
 
   deploy:
     if: github.event_name != 'pull_request'
+    permissions:
+      pages: write
+      id-token: write
     needs: build
     runs-on: ubuntu-latest
     environment:

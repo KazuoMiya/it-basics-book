@@ -7,7 +7,7 @@ SQL examples run with SQLite against the sample tables in examples/sql/.
 Exits with status 1 when an example no longer prints what the book says.
 """
 import json
-import os
+from contextlib import chdir, closing
 import sqlite3
 import sys
 import tempfile
@@ -20,6 +20,11 @@ import runner  # noqa: E402
 
 def python_output(r):
     res = json.loads(runner.run(r['code'], r['mode'], r.get('setup', '')))
+    errors = [it['err'] for it in res.get('repl', [res]) if it.get('err')]
+    actual = [error.partition(':')[0] for error in errors]
+    expected_error = r.get('attrs', {}).get('raises')
+    if actual != ([expected_error] if expected_error else []):
+        raise ValueError('例外が期待と異なります: ' + repr(errors))
     if 'repl' in res:
         parts = []
         for it in res['repl']:
@@ -29,28 +34,41 @@ def python_output(r):
     return (res['out'] + (res['err'] + '\n' if res['err'] else '')).rstrip('\n')
 
 
+def sql_statements(code):
+    start = 0
+    for i, char in enumerate(code):
+        if char == ';' and sqlite3.complete_statement(code[start:i + 1]):
+            yield code[start:i + 1]
+            start = i + 1
+    if code[start:].strip():
+        yield code[start:]
+
+
 def sql_first_rows(r):
-    db = sqlite3.connect(':memory:', isolation_level=None)
-    db.execute('PRAGMA foreign_keys = ON')
-    db.executescript(sample_sql(r['tables']))
-    first, buf = None, ''
-    for line in r['code'].split('\n'):
-        buf += line + '\n'
-        if sqlite3.complete_statement(buf):
-            cur = db.execute(buf)
-            if cur.description and first is None:
-                first = {'columns': [d[0] for d in cur.description], 'rows': [[str(v) for v in row] for row in cur.fetchall()]}
-            buf = ''
-    return first
+    with closing(sqlite3.connect(':memory:', isolation_level=None)) as db:
+        db.execute('PRAGMA foreign_keys = ON')
+        db.executescript(sample_sql(r['tables']))
+        first = None
+        for sql in sql_statements(r['code']):
+            cur = db.execute(sql)
+            if cur.description:
+                rows = [[str(v) for v in row] for row in cur]
+                if first is None:
+                    first = {'columns': [d[0] for d in cur.description], 'rows': rows}
+        return first
 
 
 def main():
+    with tempfile.TemporaryDirectory() as tmp, chdir(tmp):
+        check_chapters(load())
+
+
+def check_chapters(chapters):
     failures = checked = 0
-    work = tempfile.mkdtemp()
-    os.chdir(work)  # examples that write files do it here
-    for ch in load():
+    for ch in chapters:
         for r in ch['runs']:
             where = f'{ch["path"].name}:{r["start"] + 1}'
+            checked += 1
             try:
                 if r['lang'] == 'python':
                     got = python_output(r)
@@ -58,11 +76,13 @@ def main():
                 else:
                     got = sql_first_rows(r)
                     want = {'columns': r['expected']['columns'], 'rows': r['expected']['rows']} if r['expected'] else None
+                    if r.get('attrs', {}).get('unordered') and got is not None and want is not None:
+                        got['rows'] = sorted(got['rows'])
+                        want['rows'] = sorted(want['rows'])
             except Exception as e:  # an example that cannot run at all
                 print(f'NG  {where}  {type(e).__name__}: {e}')
                 failures += 1
                 continue
-            checked += 1
             if want is None:
                 print(f'--  {where}  (no printed result to compare)')
             elif got == want:

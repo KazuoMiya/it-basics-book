@@ -1,0 +1,17 @@
+<!doctype html>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' blob:; worker-src blob:">
+<script>
+  // The parent supplies verified runtime resources and a private message port.
+  // This opaque-origin frame only relays messages to its own worker.
+  window.addEventListener('message', event => {
+    if (event.source !== parent || !event.ports[0]) return;
+    const port = event.ports[0];
+    const url = URL.createObjectURL(event.data.source);
+    const worker = new Worker(url);
+    URL.revokeObjectURL(url);
+    worker.onmessage = ({data}) => port.postMessage(data);
+    worker.onerror = () => port.postMessage({type: 'failed', message: 'Pythonの実行環境でエラーが発生しました。'});
+    port.onmessage = ({data}) => worker.postMessage(data);
+    worker.postMessage({type: 'boot', files: event.data.files});
+  }, {once: true});
+</script>
