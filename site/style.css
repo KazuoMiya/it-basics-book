@@ -207,6 +207,7 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1
   margin: 38px 0 10px; font-size: 18px; line-height: 1.6; font-weight: 700;
   scroll-margin-top: calc(var(--top-h) + 20px);
 }
+.page h4 { margin: 28px 0 8px; font-size: 16px; color: var(--accent); }
 .page p { margin: 0 0 1.1em; }
 .page ul, .page ol { padding-left: 1.4em; margin: 0 0 1.2em; }
 .page li { margin: .25em 0; }
@@ -307,6 +308,8 @@ figure.fig figcaption { margin: 10px 0 0; }
 .result pre { padding-top: 6px; }
 .result .err { color: var(--err); }
 .result .msg { color: var(--ink-2); }
+.result .feedback { margin: 0; padding: 6px 16px 12px; font-size: 13px; }
+.result .feedback:empty { display: none; }
 .result .ok { color: var(--accent); }
 .result .tables { padding: 8px 16px 14px; display: grid; gap: 12px; }
 .result .tables .tscroll { margin: 0; }

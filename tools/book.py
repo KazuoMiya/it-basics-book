@@ -101,6 +101,8 @@ def runnable(lines):
             r['consume_end'] = by_start[j]['end']
         elif f['lang'] == 'sql' and j < len(lines) and lines[j].startswith('|'):
             r['expected'], r['consume_end'] = _table(lines, j)
+        if 'exercise' in f['attrs'] and (r['mode'] != 'script' or not r['expected']):
+            raise ValueError(f"{f['start'] + 1}行目: 修正問題にはスクリプトと修正後の目標出力が必要です")
         r['tables'] = f['attrs']['tables'].split(',') if 'tables' in f['attrs'] else list(SQL_TABLES)
         out.append(r)
     return out

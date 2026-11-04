@@ -39,6 +39,17 @@ async function verify(page, base) {
     return b.locator('.out').innerText();
   }
 
+  async function checkResultHidden(block) {
+    assert.equal(await block.locator('.result').isHidden(), true);
+    assert.equal(await block.locator('.out').textContent(), '');
+  }
+  const exercises = {
+    'photo-limit': {from: 'size_mb >= 5', to: 'size_mb > 5', initial: '4 MB そのまま\n5 MB 圧縮\n6 MB 圧縮'},
+    'likes-ranking': {from: 'lambda post: post["likes"]', to: 'lambda post: int(post["likes"])', initial: '9 花の写真\n24 海の写真\n105 星の写真'},
+    'order-count': {from: 'SUM(quantity)', to: 'COUNT(*)', initial: [['1', '3'], ['2', '5'], ['3', '1']]},
+  };
+  const exercised = new Set();
+
   await page.route('https://fonts.googleapis.com/**', r => r.fulfill({contentType: 'text/css', body: ''}));
   let count = 0;
   for (const id of ['ch2', 'ch3', 'ch4', 'ch5']) {
@@ -47,11 +58,37 @@ async function verify(page, base) {
       const b = blocks.nth(i);
       const index = Number(await b.getAttribute('data-run'));
       const example = await page.evaluate(index => BOOK.runs[index], index);
+      await checkResultHidden(b);
+      if (example.mode === 'repl') {
+        const shown = await b.locator('.src').textContent();
+        assert.ok(shown.split('\n').every(l => l.startsWith('>>>') || l.startsWith('...')));
+        await b.locator('.btn-edit').click();
+        assert.equal(await b.locator('.editor').inputValue(), shown);
+        await b.locator('.btn-edit').click();
+      }
       await run(i);
+      assert.ok(await b.locator('.result').isVisible());
       assert.match(await b.locator('.status').textContent(), /ブラウザーで実行/);
+      if (example.exercise) {
+        const fix = exercises[example.exercise];
+        assert.match(await b.locator('.feedback').innerText(), /目標と結果が違います/);
+        if (example.lang === 'python') {
+          assert.equal(await b.locator('.out pre').innerText(), fix.initial);
+        } else {
+          assert.deepEqual(await b.locator('.out table').evaluate(t =>
+            [...t.tBodies[0].rows].map(r => [...r.cells].map(c => c.textContent))), fix.initial);
+        }
+        const corrected = example.code.replace(fix.from, fix.to);
+        assert.notEqual(corrected, example.code);
+        await edit(i, corrected);
+        await checkResultHidden(b);
+        await run(i);
+        assert.equal(await b.locator('.feedback').innerText(), '目標どおりの結果です。');
+        exercised.add(example.exercise);
+      }
       if (example.lang === 'python') {
         const output = (await b.locator('.out pre').textContent()).trimEnd();
-        const expected = example.mode === 'repl' ? example.code : example.expected?.text;
+        const expected = example.expected?.text;
         if (expected !== undefined) assert.equal(output, expected);
         else assert.ok(output.length > 0);
       } else {
@@ -64,10 +101,18 @@ async function verify(page, base) {
           assert.deepEqual(rows, expected);
         }
       }
+      if (example.exercise) {
+        await b.locator('.btn-reset').click();
+        await checkResultHidden(b);
+        assert.equal(await b.locator('.src').textContent(), example.code);
+        await run(i);
+        assert.match(await b.locator('.feedback').innerText(), /目標と結果が違います/);
+      }
       count++;
     }
   }
-  console.log(count + ' runnable examples verified');
+  assert.deepEqual([...exercised].sort(), Object.keys(exercises).sort());
+  console.log(count + ' runnable examples verified, including 3 edit/run/reset exercises');
 
   const sql = async code => { await edit(0, code); return run(0); };
   const limited = await sql('WITH RECURSIVE s(i) AS (VALUES(1) UNION ALL SELECT i+1 FROM s WHERE i<100000) SELECT i FROM s');
@@ -99,11 +144,29 @@ async function verify(page, base) {
   const infinite = 'WITH RECURSIVE s(i) AS (VALUES(1) UNION ALL SELECT i+1 FROM s) SELECT sum(i) FROM s';
   await edit(0, infinite);
   await blocks.first().locator('.btn-run').click();
+  await checkResultHidden(blocks.first());
   await blocks.first().getByRole('button', {name: '中断'}).click({timeout: 3000});
   await blocks.first().locator('.out .err').waitFor();
   assert.match(await blocks.first().innerText(), /中断しました/);
   assert.match(await sql(infinite), /10秒/);
   assert.match(await sql('SELECT 42'), /42/);
+
+  // A late response must not repopulate the result for a different edit.
+  await edit(0, 'SELECT 99');
+  await blocks.first().evaluate(block => {
+    block.querySelector('.btn-run').click();
+    const editor = block.querySelector('.editor');
+    editor.value = 'SELECT 100';
+    editor.dispatchEvent(new Event('input'));
+  });
+  await page.waitForFunction(() => !document.querySelector('#page .code.run .btn-run').hasAttribute('aria-busy'));
+  await checkResultHidden(blocks.first());
+  assert.match(await run(0), /100/);
+  // Fail to load a worker for a block with a published expected table.
+  await page.route('**/sql-worker.js', route => route.abort());
+  assert.match(await run(1), /読み込めません/);
+  assert.equal(await blocks.nth(1).locator('.out table').count(), 0);
+  await page.unroute('**/sql-worker.js');
 
   await chapter('ch2');
   await edit(1, `from js import XMLHttpRequest\nx = XMLHttpRequest.new()\nx.open('GET', '${base}review-ping', False)\nx.send()`);

@@ -83,7 +83,13 @@ def check_chapters(chapters):
                 print(f'NG  {where}  {type(e).__name__}: {e}')
                 failures += 1
                 continue
-            if want is None:
+            if 'exercise' in r.get('attrs', {}):
+                if got is None or got == want:
+                    failures += 1
+                    print(f'NG  {where}  修正前のコードは目標と異なる結果を返す必要があります')
+                else:
+                    print(f'OK  {where}  (exercise starts with a different result)')
+            elif want is None:
                 print(f'--  {where}  (no printed result to compare)')
             elif got == want:
                 print(f'OK  {where}')
