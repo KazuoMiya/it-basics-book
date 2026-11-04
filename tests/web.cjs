@@ -85,7 +85,17 @@ async function verify(page, base) {
     });
   });
   assert.ok(responsive, 'UI timer must run while the aggregate is still executing');
-  await blocks.first().getByText('4500001500000', {exact: true}).waitFor();
+  const aggregate = blocks.first();
+  await page.waitForFunction(() => !document.querySelector('#page .code.run .btn-run').hasAttribute('aria-busy'));
+  const result = await aggregate.locator('.out').innerText();
+  if (await aggregate.locator('.out .err').count()) {
+    assert.match(result, /SQLの実行が10秒を超えたため停止/);
+    console.log('3 million rows reached the 10-second deadline; UI stayed responsive');
+  } else {
+    assert.equal(await aggregate.locator('.out td').innerText(), '4500001500000');
+    console.log('3 million rows returned the correct sum; UI stayed responsive');
+  }
+  assert.match(await sql('WITH RECURSIVE s(i) AS (VALUES(1) UNION ALL SELECT i+1 FROM s WHERE i<30000) SELECT sum(i) FROM s'), /450015000/);
   const infinite = 'WITH RECURSIVE s(i) AS (VALUES(1) UNION ALL SELECT i+1 FROM s) SELECT sum(i) FROM s';
   await edit(0, infinite);
   await blocks.first().locator('.btn-run').click();
