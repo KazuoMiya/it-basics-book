@@ -7,7 +7,7 @@ from contextlib import closing, redirect_stdout
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from book import ROOT, check_table_width, load, sample_sql
+from book import ROOT, EXERCISE_GOAL, check_table_width, load, runnable, sample_sql
 from check_examples import check_chapters, python_output, sql_first_rows, sql_statements
 from output import build_output
 
@@ -25,6 +25,29 @@ def example(chapter, snippet):
 
 
 class BookTests(unittest.TestCase):
+    def test_exercise_goal_is_explicit_and_paired(self):
+        for lang, code, output, expected in (
+            ('python', 'print(1)', '```text\n2\n```', {'kind': 'text', 'text': '2'}),
+            ('sql', 'SELECT 1 AS n;', '| n |\n| --- |\n| 2 |',
+             {'kind': 'table', 'columns': ['n'], 'rows': [['2']]}),
+        ):
+            with self.subTest(lang=lang):
+                lines = f'```{lang} exercise=sample\n{code}\n```\n\n{EXERCISE_GOAL}\n\n{output}\n\n次の説明'.splitlines()
+                block, = runnable(lines)
+                self.assertEqual(block['expected'], expected)
+                self.assertEqual(lines[block['consume_end'] + 2], '次の説明')
+                with self.assertRaisesRegex(ValueError, '目標の出力'):
+                    runnable([line for line in lines if line != EXERCISE_GOAL])
+                with self.assertRaisesRegex(ValueError, '目標出力'):
+                    runnable(lines[:6])
+
+    def test_ordinary_adjacent_output_still_parses(self):
+        for caption in ('', '実行結果は次のとおりです。\n\n'):
+            block, = runnable(('```python\nprint(1)\n```\n\n' + caption + '```text\n1\n```').splitlines())
+            self.assertEqual(block['expected'], {'kind': 'text', 'text': '1'})
+        block, = runnable('```sql\nSELECT 1 AS n;\n```\n\n| n |\n| --- |\n| 1 |'.splitlines())
+        self.assertEqual(block['expected']['rows'], [['1']])
+
     def test_transfer_checks_both_updates(self):
         sql = example('ch5', 'INSERT OR ROLLBACK')
         for setup in ('', "DELETE FROM accounts WHERE account_id='B'",

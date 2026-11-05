@@ -338,22 +338,24 @@ ORDER BY sales DESC, products.product_id;
 
 マグカップは、注文1001で2個、注文1004で1個売れています。1,200円×3個で3,600円です。同名の商品も商品番号で区別できます。各注文の単価を使うので、値上げしても過去の売上は変わりません。何百万件の注文があっても、この数行のSQLで同じように集計できます。
 
-#### 修正問題　買った個数と注文回数を区別する
+#### 修正問題　商品ごとの注文回数を求める
 
-会員ごとに注文回数を表示したいのに、下のSQLは商品を多く買った会員ほど回数も多く表示してしまいます。この表では1行が1回の注文です。まず実行して、会員1の注文が1001と1003の2回だったことと照らし合わせてみましょう。会員番号と列名、表示順はそのままに、注文回数を求める式を修正してください。
+商品ごとに何回注文されたかを調べます。このサンプルの注文テーブルでは1行が1回の注文で、1回に複数個買っても注文は1回と数えます。下のSQLが求めている値を、商品の個数と注文の回数に注意して読み解いてください。商品番号と列名、表示順はそのままに、目標の出力になるように集計する式を修正しましょう。
 
 ```sql exercise=order-count tables=members,products,orders
-SELECT member_id, SUM(quantity) AS order_count
+SELECT product_id, SUM(quantity) AS order_count
 FROM orders
-GROUP BY member_id
-ORDER BY member_id;
+GROUP BY product_id
+ORDER BY product_id;
 ```
 
-| member_id | order_count |
+**目標の出力（修正後）**
+
+| product_id | order_count |
 | --- | --- |
-| 1 | 2 |
-| 2 | 1 |
-| 3 | 1 |
+| 101 | 2 |
+| 102 | 1 |
+| 103 | 1 |
 
 ### 「どうやって」ではなく「何がほしいか」を書く
 

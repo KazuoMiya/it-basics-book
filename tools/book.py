@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 FENCE = re.compile(r'^```(\S*)\s*(.*?)\s*$')
 CONFIG = json.loads((ROOT / 'book.json').read_text(encoding='utf-8'))
 SQL_TABLES = ['members', 'products', 'orders', 'accounts']
+EXERCISE_GOAL = '**目標の出力（修正後）**'
 
 
 def chapter_files():
@@ -92,6 +93,10 @@ def runnable(lines):
         if f['lang'] == 'python' and re.search(r'^>>> ', f['code'], re.M):
             r['mode'] = 'repl'
         j = _next(lines, f['end'])
+        if 'exercise' in f['attrs']:
+            if j >= len(lines) or lines[j] != EXERCISE_GOAL:
+                raise ValueError(f"{f['start'] + 1}行目: 修正問題のコードの後に「{EXERCISE_GOAL}」を置いてください")
+            j = _next(lines, j)
         if j < len(lines) and lines[j].startswith('実行結果は') and len(lines[j]) < 30:
             k = _next(lines, j)
             if k in by_start and by_start[k]['lang'] in ('', 'text'):

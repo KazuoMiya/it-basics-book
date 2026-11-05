@@ -211,6 +211,7 @@
   }
 
   // ------------------------------------------------------------- Python
+  class RuntimeLoadError extends Error {}
   let pySession = null;
   let pyAssets = null;
   async function loadPyAssets(signal) {
@@ -274,8 +275,11 @@
   }
 
   async function runPython(code, mode, setup) {
-    const s = startPython();
-    await s.ready;
+    let s;
+    try {
+      s = startPython();
+      await s.ready;
+    } catch (error) { throw new RuntimeLoadError(error.message || String(error)); }
     const id = ++s.seq;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => endPySession(s, new Error('10秒たっても終わらなかったため、同じ実行環境の処理を停止しました。')), 10000);
@@ -287,9 +291,11 @@
   // ---------------------------------------------------------------- SQL
   function runSQL(code, setup, signal) {
     return new Promise((resolve, reject) => {
-      const worker = new Worker('sql-worker.js');
+      let worker, booted = false;
+      try { worker = new Worker('sql-worker.js'); }
+      catch (error) { reject(new RuntimeLoadError(error.message || String(error))); return; }
       const stop = () => finish(new Error('実行を中断しました。'));
-      const timer = setTimeout(() => finish(new Error('SQLの実行が10秒を超えたため停止しました。')), 10000);
+      let timer = setTimeout(() => finish(new RuntimeLoadError('SQLの準備が時間内に完了しませんでした。')), 10000);
       function finish(error, items) {
         clearTimeout(timer);
         signal.removeEventListener('abort', stop);
@@ -297,8 +303,17 @@
         if (error) reject(error); else resolve(items);
       }
       signal.addEventListener('abort', stop, {once: true});
-      worker.onmessage = ({data}) => finish(data.error && new Error(data.error), data.items);
-      worker.onerror = () => finish(new Error('SQLの実行環境を読み込めませんでした。'));
+      worker.onmessage = ({data}) => {
+        if (data.type === 'booted') {
+          booted = true;
+          clearTimeout(timer);
+          timer = setTimeout(() => finish(new Error('SQLの実行が10秒を超えたため停止しました。')), 10000);
+          return;
+        }
+        finish(data.error && (data.phase === 'load' ? new RuntimeLoadError(data.error) : new Error(data.error)), data.items);
+      };
+      worker.onerror = () => finish(booted ? new Error('SQLの実行中にエラーが発生しました。')
+        : new RuntimeLoadError('SQLの実行環境を読み込めませんでした。'));
       worker.postMessage({code, setup});
     });
   }
@@ -347,6 +362,15 @@
     return JSON.stringify(table.columns) === JSON.stringify(goal.columns) &&
       actual.length === target.length && actual.every((key, i) => key === target[i]);
   }
+  function referenceHTML(b) {
+    if (!b.expected) return '<p class="msg">このコードには、本書に掲載の結果がありません。</p>';
+    const heading = b.exercise ? '本書に掲載の目標の出力（修正後）' : '本書に掲載の結果';
+    const note = b.exercise ? '修正後に目指す出力です。初期コードや編集したコードの実行結果ではありません。'
+      : '原稿に掲載したコードの結果です。編集したコードの実行結果ではありません。';
+    const output = b.expected.kind === 'table' ? tableHTML(b.expected.columns, b.expected.rows)
+      : `<pre>${esc(b.expected.text)}</pre>`;
+    return `<section class="reference"><p><strong>${heading}</strong><br>${note}</p>${output}</section>`;
+  }
 
   // --------------------------------------------------------- code blocks
   const SAMPLE_NOTE = { members: '会員', products: '商品', orders: '注文', accounts: '口座' };
@@ -364,18 +388,22 @@
       `<div class="code-head"><span class="lang">${lang === 'sql' ? 'SQL' : 'Python'}</span><span class="note">${esc(note)}</span>` +
       `<div class="actions"><button type="button" class="btn-reset" hidden>元に戻す</button>` +
       `<button type="button" class="btn-edit" aria-controls="${id}">編集</button>` +
-      `<button type="button" class="btn-run">実行</button></div></div>` +
+      `<button type="button" class="btn-run" aria-controls="result-${i}">実行</button></div></div>` +
       `<pre class="src"><code></code></pre>` +
       `<textarea class="editor" id="${id}" spellcheck="false" autocapitalize="off" autocomplete="off" hidden aria-label="コードを編集"></textarea>` +
-      `<div class="result" hidden><div class="result-head"><span class="label">実行結果</span><span class="status"></span></div><div class="out"></div>` +
+      `<div class="announcement sr-only" role="status" aria-live="polite" aria-atomic="true"></div>` +
+      `<div class="result" id="result-${i}" hidden><div class="result-head"><span class="label">実行結果</span><span class="status"></span></div><div class="out"></div>` +
       (b.exercise ? '<p class="feedback"></p>' : '') + '</div>' +
       (lang === 'sql' ? `<details class="sample"><summary>サンプルデータを作るSQLを見る</summary><pre><code>${hlCode(sqlSetup, 'sql')}</code></pre></details>` : '');
     const src = $('.src code', el), ed = $('.editor', el), result = $('.result', el), out = $('.out', el),
-      status = $('.status', el), btnRun = $('.btn-run', el), btnEdit = $('.btn-edit', el), btnReset = $('.btn-reset', el);
+      status = $('.status', el), announcement = $('.announcement', el),
+      btnRun = $('.btn-run', el), btnEdit = $('.btn-edit', el), btnReset = $('.btn-reset', el);
     const paint = () => { src.innerHTML = hl(code, lang, b.mode); };
     const clearResult = () => {
       result.hidden = true;
       out.replaceChildren();
+      $('.result-head .label', el).textContent = '実行結果';
+      announcement.textContent = '';
       status.textContent = '';
       status.classList.remove('live');
       if (b.exercise) $('.feedback', el).textContent = '';
@@ -443,11 +471,17 @@
         if (b.exercise) $('.feedback', el).textContent = goalMet
           ? '目標どおりの結果です。' : '目標と結果が違います。コードを編集してもう一度実行しましょう。';
         result.hidden = false;
+        announcement.textContent = '実行結果を表示しました。' + (b.exercise ? $('.feedback', el).textContent : '');
       } catch (err) {
         if (revision !== runningRevision) return;
-        status.textContent = '実行できませんでした';
-        out.innerHTML = `<pre><span class="err">${esc(err.message || err)}</span></pre>`;
+        const unavailable = err instanceof RuntimeLoadError;
+        $('.result-head .label', el).textContent = 'エラー';
+        status.textContent = unavailable ? '実行環境を読み込めませんでした' : '実行できませんでした';
+        out.innerHTML = `<pre><span class="err">${esc(err.message || err)}</span></pre>` +
+          (unavailable ? referenceHTML(b) : '');
         result.hidden = false;
+        announcement.textContent = status.textContent + '。' + (unavailable && b.expected
+          ? (b.exercise ? '本書に掲載の目標の出力を参考表示しました。判定は行っていません。' : '本書に掲載の結果を参考表示しました。') : 'エラーの内容を確認してください。');
       } finally {
         sqlController = null;
         btnRun.textContent = '実行';
@@ -455,7 +489,9 @@
       }
     });
     // Start loading Python as soon as the reader shows interest in running code.
-    if (lang === 'python') btnRun.addEventListener('pointerenter', () => { startPython().ready.catch(() => {}); }, { once: true });
+    if (lang === 'python') btnRun.addEventListener('pointerenter', () => {
+      try { startPython().ready.catch(() => {}); } catch { /* Report preparation failures when Run is pressed. */ }
+    }, { once: true });
   }
 
   // ------------------------------------------------------------- start
