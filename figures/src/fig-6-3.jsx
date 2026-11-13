@@ -1,1 +1,45 @@
-export default () => { const ink = 'var(--cds-text-primary)', quiet = 'var(--cds-text-secondary)', edge = 'var(--cds-chart-axis)', accent = 'var(--cds-chart-categorical-1)'; const sy = i => 84 + i * 112; const server = (i, main) => <rect x='520' y={sy(i)} width='216' height='72' rx='8' fill={main ? accent : 'none'} fillOpacity={main ? 0.12 : 1} stroke={main ? accent : edge} strokeWidth={main ? 2 : 1.25}/>; const pair = i => <g><path d={`M432 ${sy(i) + 20}H520`} markerEnd='url(#dns-arrow)'/><path d={`M520 ${sy(i) + 52}H432`} markerEnd='url(#dns-arrow)'/></g>; return <svg viewBox='0 0 760 404' role='img' aria-label='リゾルバーが上の階層から順に尋ね、権威DNSサーバーが答えを返す' fontSize='13'><defs><marker id='dns-arrow' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='6' markerHeight='6' orient='auto-start-reverse'><path d='M0 0L10 5L0 10z' fill={edge}/></marker></defs><text data-claude-text-id='title' x='24' y='32' fontSize='15' fontWeight='600' fill={ink}>リゾルバーが上の階層から順に尋ね、権威DNSサーバーが答えを返す</text><text data-claude-text-id='subtitle' x='24' y='56' fontSize='11.5' fill={quiet}>スマホのブラウザーで www.example.co.jp を開くとき</text><g data-claude-anchor='connectors' fill='none' stroke={edge} strokeWidth='1.25'><path d='M144 216H232' markerEnd='url(#dns-arrow)'/><path d='M232 248H144' markerEnd='url(#dns-arrow)'/>{pair(0)}{pair(1)}{pair(2)}</g><g data-claude-anchor='client'><rect x='24' y='196' width='120' height='72' rx='8' fill='none' stroke={edge} strokeWidth='1.25'/><text data-claude-text-id='phone' x='84' y='228' textAnchor='middle' fontWeight='600' fill={ink}>スマホ</text><text data-claude-text-id='phone-sub' x='84' y='248' textAnchor='middle' fontSize='11.5' fill={quiet}>ブラウザー</text></g><text data-claude-text-id='step1' x='188' y='208' textAnchor='middle' fontSize='11.5' fill={quiet}>① 質問</text><text data-claude-text-id='step8' x='188' y='266' textAnchor='middle' fontSize='11.5' fontWeight='600' fill={ink}>⑧ 回答</text><g data-claude-anchor='resolver'><rect x='232' y='84' width='200' height='296' rx='8' fill='none' stroke={edge} strokeWidth='1.25'/><text data-claude-text-id='resolver' x='332' y='176' textAnchor='middle' fontWeight='600' fill={ink}>フルサービスリゾルバー</text><text data-claude-text-id='resolver-alias' x='332' y='196' textAnchor='middle' fontSize='11.5' fill={quiet}>（キャッシュDNSサーバー）</text><text data-claude-text-id='resolver-owner' x='332' y='214' textAnchor='middle' fontSize='11.5' fill={quiet}>ISPなどが用意する</text><rect x='248' y='292' width='168' height='72' rx='8' fill='var(--cds-chart-reference-tint)' stroke='var(--cds-chart-grid)' strokeWidth='1'/><text data-claude-text-id='cache' x='332' y='314' textAnchor='middle' fontWeight='600' fill={ink}>キャッシュ</text><text data-claude-text-id='cache-1' x='332' y='334' textAnchor='middle' fontSize='11.5' fill={ink}>調べた答えを</text><text data-claude-text-id='cache-2' x='332' y='350' textAnchor='middle' fontSize='11.5' fill={ink}>TTLの間だけ覚える</text></g><text data-claude-text-id='step2' x='476' y={sy(0) + 13} textAnchor='middle' fontSize='11.5' fill={quiet}>② 質問</text><text data-claude-text-id='step3' x='476' y={sy(0) + 68} textAnchor='middle' fontSize='11.5' fill={quiet}>③ 案内</text><text data-claude-text-id='step4' x='476' y={sy(1) + 13} textAnchor='middle' fontSize='11.5' fill={quiet}>④ 質問</text><text data-claude-text-id='step5' x='476' y={sy(1) + 68} textAnchor='middle' fontSize='11.5' fill={quiet}>⑤ 案内</text><text data-claude-text-id='step6' x='476' y={sy(2) + 13} textAnchor='middle' fontSize='11.5' fill={quiet}>⑥ 質問</text><text data-claude-text-id='step7' x='476' y={sy(2) + 68} textAnchor='middle' fontSize='11.5' fontWeight='600' fill={ink}>⑦ 回答</text><g data-claude-anchor='root-server'>{server(0, false)}<text data-claude-text-id='root' x='536' y={sy(0) + 22} fontWeight='600' fill={ink}>ルートサーバー</text><text data-claude-text-id='root-sub' x='536' y={sy(0) + 42} fontSize='11.5' fill={quiet}>名前の木の頂点</text><text data-claude-text-id='root-say' x='536' y={sy(0) + 60} fontSize='11.5' fill={ink}>「jpはjpのサーバーへ」</text></g><g data-claude-anchor='tld-server'>{server(1, false)}<text data-claude-text-id='tld' x='536' y={sy(1) + 22} fontWeight='600' fill={ink}>TLDのサーバー</text><text data-claude-text-id='tld-sub' x='536' y={sy(1) + 42} fontSize='11.5' fill={quiet}>jpを担当</text><text data-claude-text-id='tld-say' x='536' y={sy(1) + 60} fontSize='11.5' fill={ink}>「example.co.jpはこちらへ」</text></g><g data-claude-anchor='authoritative-server'>{server(2, true)}<text data-claude-text-id='auth' x='536' y={sy(2) + 22} fontWeight='600' fill={ink}>権威DNSサーバー</text><text data-claude-text-id='auth-sub' x='536' y={sy(2) + 42} fontSize='11.5' fill={quiet}>example.co.jpを担当</text><text data-claude-text-id='auth-say' x='536' y={sy(2) + 60} fontSize='11.5' fill={ink}>「IPアドレスは203.0.113.25」</text></g></svg>; };
+export default () => {
+  const ink = 'var(--cds-text-primary)', quiet = 'var(--cds-text-secondary)', edge = 'var(--cds-chart-axis)', accent = 'var(--cds-chart-categorical-1)', c2 = 'var(--cds-chart-categorical-2)';
+  const ry = i => 84 + i * 124;
+  const cond = i => <rect x='216' y={ry(i)} width='220' height='76' rx='8' fill='var(--cds-chart-reference-tint)' stroke='var(--cds-chart-grid)' strokeWidth='1'/>;
+  const dest = (i, tok) => <rect x='476' y={ry(i)} width='260' height='76' rx='8' fill={tok} fillOpacity='0.12' stroke={tok} strokeWidth='1.5'/>;
+  return <svg viewBox='0 0 760 372' role='img' aria-label='宛先が同じネットワークなら直接届け、別のネットワークならデフォルトゲートウェイへ渡す' fontSize='13'>
+    <defs><marker id='gw-arrow' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='6' markerHeight='6' orient='auto-start-reverse'><path d='M0 0L10 5L0 10z' fill={edge}/></marker></defs>
+    <text data-claude-text-id='title' x='24' y='32' fontSize='15' fontWeight='600' fill={ink}>同じネットワークなら直接届け、別ならデフォルトゲートウェイへ渡す</text>
+    <text data-claude-text-id='subtitle' x='24' y='56' fontSize='11.5' fill={quiet}>スマホは、宛先のネットワーク部を自分のネットワーク部と比べて、最初の渡し先を決める</text>
+    <g data-claude-anchor='connectors' fill='none' stroke={edge} strokeWidth='1.25'>
+      <path d={`M184 174H200V${ry(0) + 38}H216`} markerEnd='url(#gw-arrow)'/>
+      <path d={`M184 194H200V${ry(1) + 38}H216`} markerEnd='url(#gw-arrow)'/>
+      <path d={`M436 ${ry(0) + 38}H476`} markerEnd='url(#gw-arrow)'/>
+      <path d={`M436 ${ry(1) + 38}H476`} markerEnd='url(#gw-arrow)'/>
+    </g>
+    <g data-claude-anchor='node-phone'>
+      <rect x='24' y='144' width='160' height='80' rx='8' fill='none' stroke={edge} strokeWidth='1.25'/>
+      <text data-claude-text-id='phone' x='40' y='168' fontWeight='600' fill={ink}>スマホ</text>
+      <text data-claude-text-id='phone-ip' x='40' y='188' fontSize='11.5' fill={quiet}>192.168.1.10</text>
+      <text data-claude-text-id='phone-mask' x='40' y='207' fontSize='11.5' fill={quiet}>マスク 255.255.255.0</text>
+    </g>
+    <g data-claude-anchor='row-same'>
+      {cond(0)}
+      <text data-claude-text-id='same-dst' x='232' y={ry(0) + 23} fontSize='12.5' fontWeight='600' fill={ink}>宛先 192.168.1.20</text>
+      <text data-claude-text-id='same-judge' x='232' y={ry(0) + 43} fontSize='11.5' fill={ink}>ネットワーク部が自分と同じ</text>
+      <text data-claude-text-id='same-arp' x='232' y={ry(0) + 62} fontSize='11.5' fill={quiet}>ARPでプリンターのMACを調べる</text>
+      {dest(0, accent)}
+      <text data-claude-text-id='printer' x='492' y={ry(0) + 23} fontWeight='600' fill={ink}>プリンター</text>
+      <text data-claude-text-id='printer-ip' x='492' y={ry(0) + 43} fontSize='11.5' fill={ink}>192.168.1.20（同じLANの中）</text>
+      <text data-claude-text-id='printer-note' x='492' y={ry(0) + 62} fontSize='11.5' fill={ink}>宛先MACも宛先IPもプリンター</text>
+    </g>
+    <g data-claude-anchor='row-other'>
+      {cond(1)}
+      <text data-claude-text-id='other-dst' x='232' y={ry(1) + 23} fontSize='12.5' fontWeight='600' fill={ink}>宛先 203.0.113.25</text>
+      <text data-claude-text-id='other-judge' x='232' y={ry(1) + 43} fontSize='11.5' fill={ink}>ネットワーク部が自分と違う</text>
+      <text data-claude-text-id='other-arp' x='232' y={ry(1) + 62} fontSize='11.5' fill={quiet}>ARPでルーターのMACを調べる</text>
+      {dest(1, c2)}
+      <text data-claude-text-id='router' x='492' y={ry(1) + 23} fontWeight='600' fill={ink}>家のルーター</text>
+      <text data-claude-text-id='router-ip' x='492' y={ry(1) + 43} fontSize='11.5' fill={ink}>192.168.1.1（デフォルトゲートウェイ）</text>
+      <text data-claude-text-id='router-note' x='492' y={ry(1) + 62} fontSize='11.5' fill={ink}>宛先MACはルーター、宛先IPはそのまま</text>
+    </g>
+    <text data-claude-text-id='onward' x='476' y={ry(1) + 98} fontSize='11.5' fill={quiet}>ここから先は、ルーターのバケツリレー（図6-2）</text>
+    <text data-claude-text-id='foot' x='24' y='352' fontSize='11.5' fill={quiet}>ネットワーク部は、IPアドレスにサブネットマスクを当てて取り出す（この例では先頭の24ビット）</text>
+  </svg>;
+};

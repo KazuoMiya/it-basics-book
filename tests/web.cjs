@@ -44,16 +44,17 @@ async function verify(page, base) {
     assert.equal(await block.locator('.out').textContent(), '');
     assert.equal(await block.locator('.announcement').textContent(), '');
   }
-  const exercises = {
-    'photo-limit': {from: 'size_mb >= 5', to: 'size_mb > 5', initial: '4 MB そのまま\n5 MB 圧縮\n6 MB 圧縮'},
-    'likes-ranking': {from: 'lambda post: post["likes"]', to: 'lambda post: int(post["likes"])', initial: '9 花の写真\n24 海の写真\n105 星の写真'},
-    'order-count': {from: 'SUM(quantity)', to: 'COUNT(*)', initial: [['101', '3'], ['102', '1'], ['103', '5']]},
-  };
+  // Every exercise is solved with the code of its answer block (answer=ID in the manuscript).
+  await chapter('intro');
+  const allRuns = await page.evaluate(() => BOOK.runs.map(r => ({exercise: r.exercise, answer: r.answer, code: r.code})));
+  const answers = Object.fromEntries(allRuns.filter(r => r.answer).map(r => [r.answer, r.code]));
+  const exerciseIds = allRuns.filter(r => r.exercise).map(r => r.exercise);
+  assert.ok(exerciseIds.length >= 3);
   const exercised = new Set();
 
   await page.route('https://fonts.googleapis.com/**', r => r.fulfill({contentType: 'text/css', body: ''}));
   let count = 0;
-  for (const id of ['ch2', 'ch3', 'ch4', 'ch5']) {
+  for (const id of ['ch1', 'ch2', 'ch3', 'ch4', 'ch5', 'ch6', 'ch7']) {
     await chapter(id);
     for (let i = 0; i < await blocks.count(); i++) {
       const b = blocks.nth(i);
@@ -76,16 +77,10 @@ async function verify(page, base) {
       assert.match(await b.locator('.announcement').textContent(), /実行結果を表示しました/);
       assert.equal(await b.locator('.reference').count(), 0);
       if (example.exercise) {
-        const fix = exercises[example.exercise];
         assert.match(await b.locator('.feedback').innerText(), /目標と結果が違います/);
         assert.match(await b.locator('.announcement').textContent(), /目標と結果が違います/);
-        if (example.lang === 'python') {
-          assert.equal(await b.locator('.out pre').innerText(), fix.initial);
-        } else {
-          assert.deepEqual(await b.locator('.out table').evaluate(t =>
-            [...t.tBodies[0].rows].map(r => [...r.cells].map(c => c.textContent))), fix.initial);
-        }
-        const corrected = example.code.replace(fix.from, fix.to);
+        const corrected = answers[example.exercise];
+        assert.ok(corrected, 'exercise ' + example.exercise + ' needs an answer block');
         assert.notEqual(corrected, example.code);
         await edit(i, corrected);
         await checkResultHidden(b);
@@ -119,8 +114,9 @@ async function verify(page, base) {
       count++;
     }
   }
-  assert.deepEqual([...exercised].sort(), Object.keys(exercises).sort());
-  console.log(count + ' runnable examples verified, including 3 edit/run/reset exercises');
+  assert.deepEqual([...exercised].sort(), [...exerciseIds].sort());
+  console.log(count + ' runnable examples verified, including ' + exercised.size + ' edit/run/reset exercises');
+  await chapter('ch5');
   const cdp = await page.context().newCDPSession(page);
   const {nodes} = await cdp.send('Accessibility.getFullAXTree');
   assert.ok(nodes.some(n => n.role?.value === 'status' && !n.ignored &&

@@ -7,7 +7,7 @@ from contextlib import closing, redirect_stdout
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from book import ROOT, EXERCISE_GOAL, check_table_width, load, runnable, sample_sql
+from book import ROOT, EXERCISE_GOAL, check_table_width, fences, load, runnable, sample_sql
 from check_examples import check_answers, check_chapters, python_output, sql_first_rows, sql_statements
 from output import build_output
 
@@ -19,9 +19,56 @@ def database():
     return db
 
 
-def example(chapter, snippet):
-    runs = next(ch for ch in load() if ch['id'] == chapter)['runs']
-    return next(r['code'] for r in runs if snippet in r['code'])
+BALANCES = 'SELECT account_id, balance FROM accounts ORDER BY account_id'
+
+
+def chapter(chapter_id):
+    return next(ch for ch in load() if ch['id'] == chapter_id)
+
+
+def example(chapter_id, snippet):
+    return next(r['code'] for r in chapter(chapter_id)['runs'] if snippet in r['code'])
+
+
+def results(code, tables=('members', 'products', 'orders', 'accounts'), keep_going=False):
+    """Run SQL one statement at a time, as the web book does; with keep_going, continue after errors."""
+    with closing(sqlite3.connect(':memory:', isolation_level=None)) as db:
+        db.execute('PRAGMA foreign_keys = ON')
+        db.executescript(sample_sql(list(tables)))
+        out = {'tables': [], 'errors': []}
+        for sql in sql_statements(code):
+            try:
+                cur = db.execute(sql)
+            except sqlite3.Error as error:
+                if not keep_going:
+                    raise
+                out['errors'].append(str(error))
+                continue
+            if cur.description:
+                out['tables'].append(cur.fetchall())
+        out['in_transaction'] = db.in_transaction
+        out['balances'] = db.execute(BALANCES).fetchall() if 'accounts' in tables else None
+        return out
+
+
+def cells(rows):
+    return [['NULL' if value is None else str(value) for value in row] for row in rows]
+
+
+def printed_tables(chapter_id, snippet):
+    """Tables printed after an example, up to the next heading or code block."""
+    ch = chapter(chapter_id)
+    run = next(r for r in ch['runs'] if snippet in r['code'])
+    lines, tables, i = ch['lines'], [], run['end'] + 1
+    while i < len(lines) and not lines[i].startswith(('#', '```')):
+        if lines[i].startswith('|'):
+            start = i
+            while i < len(lines) and lines[i].startswith('|'):
+                i += 1
+            tables.append([[c.strip() for c in line.strip().strip('|').split('|')] for line in lines[start + 2:i]])
+        else:
+            i += 1
+    return tables
 
 
 class BookTests(unittest.TestCase):
@@ -59,22 +106,67 @@ class BookTests(unittest.TestCase):
         block, = runnable('```sql\nSELECT 1 AS n;\n```\n\n| n |\n| --- |\n| 1 |'.splitlines())
         self.assertEqual(block['expected']['rows'], [['1']])
 
-    def test_transfer_checks_both_updates(self):
-        sql = example('ch5', 'INSERT OR ROLLBACK')
-        for setup in ('', "DELETE FROM accounts WHERE account_id='B'",
-                      "UPDATE accounts SET balance=5000 WHERE account_id='A'"):
-            with self.subTest(setup=setup), closing(database()) as db:
-                db.execute(setup)
-                balances = 'SELECT account_id, balance FROM accounts ORDER BY account_id'
-                before = db.execute(balances).fetchall()
-                if setup:
-                    with self.assertRaises(sqlite3.IntegrityError):
-                        db.executescript(sql)
+    def test_transfer_commits_or_rolls_back_as_printed(self):
+        commit = results(example('ch5', 'COMMIT;'))
+        self.assertEqual(commit['tables'], [[('A', 40000), ('B', 40000)]])
+        self.assertEqual(commit['balances'], [('A', 40000), ('B', 40000)])
+        rollback = results(example('ch5', 'ROLLBACK;'))
+        self.assertEqual(rollback['tables'], [[('A', 40000), ('B', 40000)], [('A', 50000), ('B', 30000)]])
+        self.assertEqual(rollback['balances'], [('A', 50000), ('B', 30000)])
+        # 2回目のSELECTの結果として紙面に載せた表も、実行結果と一致する
+        self.assertEqual(printed_tables('ch5', 'ROLLBACK;')[1], cells(rollback['tables'][1]))
+        self.assertEqual(printed_tables('ch5', 'LEFT JOIN orders ON')[1],
+                         cells(results(example('ch5', 'LEFT JOIN orders ON'))['tables'][1]))
+
+    def test_sql_examples_are_portable_and_safe_when_errors_are_ignored(self):
+        # エラー後も続行する環境（sqlite3コマンドの既定など）で流しても、掲載例はエラーを起こさず、
+        # トランザクションを開いたままにせず、口座の合計金額を変えない。
+        runs = [r for r in chapter('ch5')['runs'] if r['lang'] == 'sql']
+        self.assertGreaterEqual(len(runs), 15)
+        for r in runs:
+            with self.subTest(line=r['start'] + 1):
+                self.assertNotRegex(r['code'].upper(), r'OR\s+ROLLBACK|CHANGES\(|TEMP\s+TABLE')
+                done = results(r['code'], r['tables'], keep_going=True)
+                self.assertEqual(done['errors'], [])
+                self.assertFalse(done['in_transaction'])
+                if 'accounts' in r['tables']:
+                    self.assertEqual(sum(balance for _, balance in done['balances']), 80000)
+
+    def test_failed_transfer_must_be_rolled_back_by_the_caller(self):
+        transfer = example('ch5', 'COMMIT;')
+        overdraft, = [f['code'] for f in fences(chapter('ch5')['lines']) if 'balance - 60000' in f['code']]
+        with closing(database()) as db:  # 本文のとおり、残高不足の引き落としはCHECK制約で拒まれる
+            with self.assertRaisesRegex(sqlite3.IntegrityError, 'CHECK'):
+                db.execute(overdraft)
+            self.assertEqual(db.execute(BALANCES).fetchall(), [('A', 50000), ('B', 30000)])
+        for setup in ("UPDATE accounts SET balance = 5000 WHERE account_id = 'A'",
+                      "UPDATE accounts SET account_id = 'Z' WHERE account_id = 'B'"):
+            with self.subTest(setup=setup):
+                with closing(database()) as db:  # 本文の手順：エラーか、更新件数が1でなければROLLBACK
+                    db.execute(setup)
+                    before = db.execute(BALANCES).fetchall()
+                    for sql in sql_statements(transfer):
+                        if sql.strip().upper().startswith('SELECT'):
+                            continue
+                        try:
+                            ok = db.execute(sql).rowcount == 1 or not sql.strip().upper().startswith('UPDATE')
+                        except sqlite3.IntegrityError:
+                            ok = False
+                        if not ok:
+                            db.execute('ROLLBACK')
+                            break
                     self.assertFalse(db.in_transaction)
-                    self.assertEqual(db.execute(balances).fetchall(), before)
-                else:
-                    db.executescript(sql)
-                    self.assertEqual(db.execute(balances).fetchall(), [('A', 40000), ('B', 40000)])
+                    self.assertEqual(db.execute(BALANCES).fetchall(), before)
+                # 本文が警告する事故：失敗を無視してCOMMITまで進めると、片方の更新だけが確定する
+                ignored = results(setup + ';' + transfer, keep_going=True)
+                self.assertNotEqual(sum(balance for _, balance in ignored['balances']), sum(b for _, b in before))
+
+    def test_outer_join_exercise_needs_both_fixes(self):
+        run = next(r for r in chapter('ch5')['runs'] if r['attrs'].get('exercise') == 'member-orders')
+        goal = run['expected']['rows']
+        self.assertEqual(goal[-1], ['伊藤 直樹', '0'])
+        half_fixed = run['code'].replace('JOIN orders', 'LEFT JOIN orders')
+        self.assertEqual(cells(results(half_fixed)['tables'][0])[-1], ['伊藤 直樹', '1'])
 
     def test_sales_keeps_order_price_and_product_identity(self):
         with closing(database()) as db:
