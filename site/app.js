@@ -54,8 +54,7 @@
     const prev = pages[i - 1], next = pages[i + 1];
     pagerEl.innerHTML =
       (prev ? `<a class="prev" href="#${prev.id}"><span class="dir">前へ</span><span class="t">${esc(pageTitle(prev))}</span></a>` : '') +
-      (next ? `<a class="next" href="#${next.id}"><span class="dir">次へ</span><span class="t">${esc(pageTitle(next))}</span></a>` : '') +
-      `<p class="source"><a href="${esc(p.source)}" target="_blank" rel="noopener">この章の原稿をGitHubで見る</a></p>`;
+      (next ? `<a class="next" href="#${next.id}"><span class="dir">次へ</span><span class="t">${esc(pageTitle(next))}</span></a>` : '');
     tocEl.querySelectorAll(':scope > li').forEach(li => {
       const on = li.dataset.page === pid;
       li.classList.toggle('current', on);

@@ -3,6 +3,10 @@
   "description": "コンピューター、データ、プログラム、データベース、ネットワーク、セキュリティのしくみを、なぜそうなるのかから学ぶIT入門書。本文中のPythonとSQLのコード例は、その場で実行できます。",
   "repo": "KazuoMiya/it-basics-book",
   "branch": "main",
+  "lab": {
+    "name": "NexusCodeLab",
+    "url": "https://nexuscode-lab.net/"
+  },
   "runtime": {
     "pyodide": {
       "url": "https://registry.npmjs.org/pyodide/-/pyodide-0.26.4.tgz",

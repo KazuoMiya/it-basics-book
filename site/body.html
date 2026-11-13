@@ -5,7 +5,7 @@
     </button>
     <a class="brand" href="#intro">{{TITLE}}</a>
     <span class="crumb" id="crumb"></span>
-    <a class="repo-link" href="{{REPO}}" target="_blank" rel="noopener">GitHub</a>
+    <a class="lab-link" href="{{LAB_URL}}" target="_blank" rel="noopener">{{LAB_NAME}}</a>
   </header>
 
   <nav class="sidebar" id="sidebar" aria-label="目次">
@@ -17,6 +17,10 @@
     <div class="results" id="results" hidden></div>
     <ol class="toc" id="toc"></ol>
     <p class="side-note">PythonとSQLのコード例は、その場で実行できます。</p>
+    <a class="lab-card" href="{{LAB_URL}}" target="_blank" rel="noopener">
+      <span class="lab-card-title">質問とトレーニングは{{LAB_NAME}}で</span>
+      <span class="lab-card-text">本書の内容についての質問への回答や、手を動かして身につけるトレーニングは、{{LAB_NAME}}で受け付けています。</span>
+    </a>
   </nav>
   <div class="scrim" id="scrim" hidden></div>
 
