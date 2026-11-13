@@ -55,6 +55,8 @@ def section_id(pid, title, counters):
         return f'{pid}-column', 'column'
     if 'のまとめ' in title:
         return f'{pid}-summary', 'summary'
+    if title.startswith('修正問題の解答'):
+        return f'{pid}-answers', 'answers'
     counters[pid] = counters.get(pid, 0) + 1
     return f'{pid}-{counters[pid]}', 'plain'
 

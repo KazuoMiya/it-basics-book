@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 from book import ROOT, EXERCISE_GOAL, check_table_width, load, runnable, sample_sql
-from check_examples import check_chapters, python_output, sql_first_rows, sql_statements
+from check_examples import check_answers, check_chapters, python_output, sql_first_rows, sql_statements
 from output import build_output
 
 
@@ -40,6 +40,17 @@ class BookTests(unittest.TestCase):
                     runnable([line for line in lines if line != EXERCISE_GOAL])
                 with self.assertRaisesRegex(ValueError, '目標出力'):
                     runnable(lines[:6])
+
+    def test_every_exercise_has_a_matching_answer(self):
+        goal = {'kind': 'text', 'text': '1'}
+        problem = {'attrs': {'exercise': 'p'}, 'expected': goal}
+        answer = lambda expected: {'attrs': {'answer': 'p'}, 'expected': expected}
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(check_answers([{'runs': [problem]}]), 1)
+            self.assertEqual(check_answers([{'runs': [problem, answer({'kind': 'text', 'text': '2'})]}]), 1)
+            self.assertEqual(check_answers([{'runs': [answer(goal)]}]), 1)
+            self.assertEqual(check_answers([{'runs': [problem, answer(goal)]}]), 0)
+        self.assertEqual(check_answers(load()), 0)
 
     def test_ordinary_adjacent_output_still_parses(self):
         for caption in ('', '実行結果は次のとおりです。\n\n'):

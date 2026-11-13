@@ -342,6 +342,8 @@ ORDER BY sales DESC, products.product_id;
 
 商品ごとに何回注文されたかを調べます。このサンプルの注文テーブルでは1行が1回の注文で、1回に複数個買っても注文は1回と数えます。下のSQLが求めている値を、商品の個数と注文の回数に注意して読み解いてください。商品番号と列名、表示順はそのままに、目標の出力になるように集計する式を修正しましょう。
 
+ヒント：SUM(quantity)は、何を合計しているでしょうか。行の数を数える集計関数を思い出してください。解答は、この章のまとめの前にあります。
+
 ```sql exercise=order-count tables=members,products,orders
 SELECT product_id, SUM(quantity) AS order_count
 FROM orders
@@ -349,7 +351,7 @@ GROUP BY product_id
 ORDER BY product_id;
 ```
 
-**目標の出力（修正後）**
+目標の出力（修正後）
 
 | product_id | order_count |
 | --- | --- |
@@ -729,6 +731,27 @@ RDBとNoSQLは、どちらが優れているというものではありません
 さらに、**データレイク**という考え方もあります。画像やログのファイルなど、形の決まっていないデータも含めて、まずはそのまま大量にためておくのです。「湖」に生のデータを流し込み、必要になったときに取り出して加工します。
 
 量（Volume）が膨大で、発生の速さ（Velocity）が速く、種類（Variety）も多様なデータを、**ビッグデータ**と呼びます。データの集め方、ため方、分析の仕方は、目的に応じて組み合わされます。その土台にあるのは、本章で見てきたデータベースの基本的な考え方です。
+
+## 修正問題の解答
+
+### 商品ごとの注文回数を求める
+
+「SUM(quantity)」を「COUNT(*)」に直します。SUM(quantity)は、注文ごとの個数を合計した「売れた個数」です。マグカップは2個と1個の注文があるので3になり、ノートは1回の注文で5個買われたので5になっていました。注文の回数は行の数なので、COUNT(*)で数えます。
+
+```sql answer=order-count tables=members,products,orders
+SELECT product_id, COUNT(*) AS order_count
+FROM orders
+GROUP BY product_id
+ORDER BY product_id;
+```
+
+| product_id | order_count |
+| --- | --- |
+| 101 | 2 |
+| 102 | 1 |
+| 103 | 1 |
+
+列名をorder_countとしても、中身が注文回数になるとは限りません。集計関数が何を数えているかを確かめるのが大切です。
 
 ## 第5章のまとめ
 

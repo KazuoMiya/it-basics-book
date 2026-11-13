@@ -45,7 +45,7 @@ async function verify(page, base) {
     assert.equal(await block.locator('.announcement').textContent(), '');
   }
   const exercises = {
-    'photo-limit': {from: 'size_mb >= 5', to: 'size_mb > 5', initial: '4MB そのまま\n5MB 圧縮\n6MB 圧縮'},
+    'photo-limit': {from: 'size_mb >= 5', to: 'size_mb > 5', initial: '4 MB そのまま\n5 MB 圧縮\n6 MB 圧縮'},
     'likes-ranking': {from: 'lambda post: post["likes"]', to: 'lambda post: int(post["likes"])', initial: '9 花の写真\n24 海の写真\n105 星の写真'},
     'order-count': {from: 'SUM(quantity)', to: 'COUNT(*)', initial: [['101', '3'], ['102', '1'], ['103', '5']]},
   };

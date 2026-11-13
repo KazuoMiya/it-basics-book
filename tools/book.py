@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 FENCE = re.compile(r'^```(\S*)\s*(.*?)\s*$')
 CONFIG = json.loads((ROOT / 'book.json').read_text(encoding='utf-8'))
 SQL_TABLES = ['members', 'products', 'orders', 'accounts']
-EXERCISE_GOAL = '**目標の出力（修正後）**'
+EXERCISE_GOAL = '目標の出力（修正後）'
 
 
 def chapter_files():
