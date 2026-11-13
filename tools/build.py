@@ -55,6 +55,8 @@ def section_id(pid, title, counters):
         return f'{pid}-column', 'column'
     if 'のまとめ' in title:
         return f'{pid}-summary', 'summary'
+    if title.startswith('修正問題の解答'):
+        return f'{pid}-answers', 'answers'
     counters[pid] = counters.get(pid, 0) + 1
     return f'{pid}-{counters[pid]}', 'plain'
 
@@ -73,6 +75,11 @@ for ch in chapters:
             lines[k] = None
         lines[r['start']] = f'<!--RUN {len(run_data)}-->'
         entry = {'lang': r['lang'], 'mode': r['mode'], 'code': r['code'], 'expected': r['expected']}
+        if r['mode'] == 'repl':
+            entry['code'] = '\n'.join(line for line in r['code'].splitlines() if line.startswith(('>>>', '...')))
+            entry['expected'] = {'kind': 'text', 'text': r['code']}
+        if 'exercise' in r['attrs']:
+            entry['exercise'] = r['attrs']['exercise']
         if r.get('setup'):
             entry['setup'] = r['setup']
         if r['lang'] == 'sql':

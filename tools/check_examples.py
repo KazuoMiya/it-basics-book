@@ -63,8 +63,31 @@ def main():
         check_chapters(load())
 
 
+def check_answers(chapters):
+    """Every exercise needs an answer (`answer=ID`) whose printed result is the exercise's goal."""
+    goals, answers, problems = {}, {}, []
+    for ch in chapters:
+        for r in ch['runs']:
+            attrs = r.get('attrs', {})
+            if 'exercise' in attrs:
+                goals[attrs['exercise']] = r['expected']
+            if 'answer' in attrs:
+                answers[attrs['answer']] = r['expected']
+    for key in sorted(goals.keys() - answers.keys()):
+        problems.append(f'修正問題 {key} に解答（answer={key}）がありません')
+    for key in sorted(answers.keys() - goals.keys()):
+        problems.append(f'解答 answer={key} に対応する修正問題がありません')
+    for key in sorted(goals.keys() & answers.keys()):
+        if goals[key] != answers[key]:
+            problems.append(f'解答 answer={key} の掲載結果が、修正問題の目標の出力と一致しません')
+    for p in problems:
+        print('NG  ' + p)
+    return len(problems)
+
+
 def check_chapters(chapters):
-    failures = checked = 0
+    failures = check_answers(chapters)
+    checked = 0
     for ch in chapters:
         for r in ch['runs']:
             where = f'{ch["path"].name}:{r["start"] + 1}'
@@ -83,7 +106,13 @@ def check_chapters(chapters):
                 print(f'NG  {where}  {type(e).__name__}: {e}')
                 failures += 1
                 continue
-            if want is None:
+            if 'exercise' in r.get('attrs', {}):
+                if got is None or got == want:
+                    failures += 1
+                    print(f'NG  {where}  修正前のコードは目標と異なる結果を返す必要があります')
+                else:
+                    print(f'OK  {where}  (exercise starts with a different result)')
+            elif want is None:
                 print(f'--  {where}  (no printed result to compare)')
             elif got == want:
                 print(f'OK  {where}')

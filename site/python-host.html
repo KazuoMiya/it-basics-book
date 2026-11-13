@@ -6,12 +6,16 @@
   window.addEventListener('message', event => {
     if (event.source !== parent || !event.ports[0]) return;
     const port = event.ports[0];
-    const url = URL.createObjectURL(event.data.source);
-    const worker = new Worker(url);
-    URL.revokeObjectURL(url);
-    worker.onmessage = ({data}) => port.postMessage(data);
-    worker.onerror = () => port.postMessage({type: 'failed', message: 'Pythonの実行環境でエラーが発生しました。'});
-    port.onmessage = ({data}) => worker.postMessage(data);
-    worker.postMessage({type: 'boot', files: event.data.files});
+    let url;
+    try {
+      url = URL.createObjectURL(event.data.source);
+      const worker = new Worker(url);
+      worker.onmessage = ({data}) => port.postMessage(data);
+      worker.onerror = () => port.postMessage({type: 'failed', message: 'Pythonの実行環境でエラーが発生しました。'});
+      port.onmessage = ({data}) => worker.postMessage(data);
+      worker.postMessage({type: 'boot', files: event.data.files});
+    } catch (error) {
+      port.postMessage({type: 'failed', message: String(error.message || error)});
+    } finally { if (url) URL.revokeObjectURL(url); }
   }, {once: true});
 </script>
