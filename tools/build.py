@@ -152,18 +152,17 @@ for ch in chapters:
     header = (f'<header class="chap-head"><p class="chap-label">{esc(label)}</p>'
               + (f'<h1 class="chap-title">{esc(title)}</h1>' if title else '') + '</header>')
     templates.append(f'<template id="tpl-{pid}">{header}<div class="lead">{lead}</div>{rest}</template>')
-    src_url = f'https://github.com/{CONFIG["repo"]}/blob/{CONFIG["branch"]}/manuscript/{ch["path"].name}'
-    toc.append({'id': pid, 'label': label, 'title': title, 'secs': secs, 'source': src_url})
+    toc.append({'id': pid, 'label': label, 'title': title, 'secs': secs})
 
 # ---- assemble ---------------------------------------------------------------
-data = {'toc': toc, 'runs': run_data, 'title': CONFIG['title'], 'repo': f'https://github.com/{CONFIG["repo"]}',
+data = {'toc': toc, 'runs': run_data, 'title': CONFIG['title'],
         'workerHost': (SITE / 'python-host.html').read_text(encoding='utf-8'),
         'embeddedStdlib': args.target == 'artifact', 'sample': {t: sample_sql([t]) for t in SQL_TABLES}}
 data_js = 'window.BOOK = ' + json.dumps(data, ensure_ascii=False).replace('</', '<\\/') + ';'
 head = (SITE / 'head.html').read_text(encoding='utf-8')
 body = (SITE / 'body.html').read_text(encoding='utf-8')
 fill = lambda s: (s.replace('{{TITLE}}', esc(CONFIG['title'])).replace('{{DESCRIPTION}}', esc(CONFIG['description']))  # noqa: E731
-                  .replace('{{REPO}}', f'https://github.com/{CONFIG["repo"]}'))
+                  .replace('{{LAB_URL}}', esc(CONFIG['lab']['url'])).replace('{{LAB_NAME}}', esc(CONFIG['lab']['name'])))
 head = fill(head).replace('/*STYLE*/', (SITE / 'style.css').read_text(encoding='utf-8'))
 body = (fill(body).replace('<!--TEMPLATES-->', '\n'.join(templates))
         .replace('/*DATA*/', data_js)
