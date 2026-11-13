@@ -7,4 +7,5 @@ CREATE TABLE members (
 INSERT INTO members VALUES
   (1, '佐藤 花子', '東京都', 'hanako@example.com'),
   (2, '鈴木 一郎', '大阪府', 'ichiro@example.com'),
-  (3, '高橋 美咲', '東京都', 'misaki@example.com');
+  (3, '高橋 美咲', '東京都', 'misaki@example.com'),
+  (4, '伊藤 直樹', '福岡県', NULL);

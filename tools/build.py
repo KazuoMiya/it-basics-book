@@ -80,6 +80,8 @@ for ch in chapters:
             entry['expected'] = {'kind': 'text', 'text': r['code']}
         if 'exercise' in r['attrs']:
             entry['exercise'] = r['attrs']['exercise']
+        if 'answer' in r['attrs']:
+            entry['answer'] = r['attrs']['answer']
         if r.get('setup'):
             entry['setup'] = r['setup']
         if r['lang'] == 'sql':
